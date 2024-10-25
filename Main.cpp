@@ -11,7 +11,7 @@ const int WINDOW_WIDTH = 1280;
 const int WINDOW_HEIGHT = 720;
 const float FPS = 60;
 const float TIMESTEP = 1 / FPS;
-const int cellSize = 50;
+const float initialCellSize = WINDOW_WIDTH;
 
 struct Ball
 {
@@ -50,8 +50,11 @@ struct cell{
     Color color = RED;
     Vector2 max;
     Vector2 min;
-    
+    float cellSize;
+
+    std::vector<cell> quad;
     std::vector<Ball> ballsInCell;
+    
 
     bool operator==(const cell& cell){
         return (this->position.x == cell.position.x && this->position.y == cell.position.y);
@@ -75,8 +78,32 @@ struct cell{
     bool isEmpty(){
         return (this->ballsInCell.size() <= 0);
     }
-};
 
+    void initializeCell(Vector2 position, float cellSize, Color color){
+        this->position = position;
+        this->max = Vector2{this->position.x + this->cellSize, this->position.y};
+        this->min = Vector2{this->position.x, this->position.y + this->cellSize};
+        this->color = color;
+        this->cellSize = cellSize;
+    }
+
+    void subdivideCell(){
+        cell upperLeft;    cell upperRight;
+        cell lowerLeft;    cell lowerRight;
+        Vector2 midpoint = Vector2{ this->position.x + this->cellSize/2, this->position.y + this->cellSize/2 };
+        float newCellSize = this->cellSize/2;
+
+        upperLeft.initializeCell(Vector2{this->position.x, this->position.y}, newCellSize, RED);
+        upperRight.initializeCell(Vector2{midpoint.x,this->position.y}, newCellSize, RED);
+        lowerLeft.initializeCell(Vector2{this->position.x, midpoint.y}, newCellSize, RED);
+        lowerRight.initializeCell(Vector2{midpoint.x, midpoint.y}, newCellSize, RED);
+
+        this->quad.push_back(upperLeft);  // quadrant 0 (index 0) = upperLeft, so when referring to quad[0], it will always refer to upperLeft
+        this->quad.push_back(upperRight); // quadrant 1 (index 1) = upperRight
+        this->quad.push_back(lowerLeft);  // quadrant 2 (index 2) = lowerLeft
+        this->quad.push_back(lowerRight); // quadrant 3 (index 3) = lowerLeft
+    }
+};
 float getDistance(Ball b1, Ball b2)
 {
     Vector2 dist = Vector2Subtract(b1.position, b2.position);
@@ -99,7 +126,7 @@ bool isCirclesColliding(Ball b1, Ball b2)
     }
     return false;
 }
-
+/*
 Vector2 getNearestIndexAtPoint(Vector2 position){ // get the index of the cell (inverted)
     if(position.x < 0){
         return Vector2{0, std::floor(position.y/cellSize)};
@@ -253,7 +280,7 @@ void checkCollisionInCell(std::vector<std::vector<cell>> &grid, float elasticity
         }
     }
 }
-
+*/
 float RandomDirection()
 {
     float x = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
@@ -315,7 +342,11 @@ int main()
     int spawnInstance = 0;
     
     std::vector<std::vector<cell>> grid;
-    initializeAllCells(grid);
+    // initialize Cell
+    cell initialCell;
+    initialCell.initializeCell(Vector2{0,0-((initialCellSize-WINDOW_HEIGHT)/2)}, initialCellSize, RED);
+
+    initialCell.subdivideCell();
    
     bool drawGrid = false;
     while (!WindowShouldClose())
@@ -323,14 +354,9 @@ int main()
         
         float delta_time = GetFrameTime();
         Vector2 forces = Vector2Zero();
-        Vector2 mouseIndexLocation = getNearestIndexAtPoint(GetMousePosition());
-        if(IsMouseButtonDown(0)){
-            std::cout << "MOUSE INDEX: " << mouseIndexLocation.x << " " <<  mouseIndexLocation.y << std::endl;
-            std::cout << "SIZE OF CELL: " << grid[mouseIndexLocation.y][mouseIndexLocation.x].ballsInCell.size() << std::endl;
-        }
 
         updateBallsIndex(ballArray);
-        updateCellContents(grid, ballArray);
+        //updateCellContents(grid, ballArray);
         if (IsKeyPressed(KEY_TAB)){
             drawGrid = !drawGrid;
         }
@@ -352,7 +378,7 @@ int main()
         accumulator += delta_time;
         while (accumulator >= TIMESTEP)
         {
-            checkCollisionInCell(grid, elasticityCoefficient, ballArray);
+            //checkCollisionInCell(grid, elasticityCoefficient, ballArray);
             accumulator -= TIMESTEP;
         }
         const char* numberOfBalls = std::to_string(ballArray.size()).c_str();
@@ -365,7 +391,17 @@ int main()
             DrawCircleV(ballArray[i].position, ballArray[i].radius, ballArray[i].color);
         }
 
-        if(drawGrid){
+        DrawRectangleLines(initialCell.position.x, initialCell.position.y, initialCellSize, initialCellSize, initialCell.color);
+        /* FOR CHECKING NEW QUAD TREE GRID:
+        for (int i = 0; i < initialCell.quad.size(); i++)
+        {
+            //std::cout << initialCell.quad[i].position.x << std::endl;
+            DrawRectangleLines(initialCell.quad[i].position.x, initialCell.quad[i].position.y, initialCell.quad[i].cellSize, initialCell.quad[i].cellSize, PINK);
+        }
+        */
+        //DrawCircleV(Vector2{ initialCell.position.x + initialCell.cellSize/2, initialCell.position.y + initialCell.cellSize/2 },1,PURPLE);
+        /*
+                if(drawGrid){
             for(int i = 0; i < grid.size(); i++){
                 for(int j = 0; j < grid[i].size(); j++){
                     const char* numberOfBalsInCell = std::to_string(grid[i][j].ballsInCell.size()).c_str();
@@ -375,6 +411,8 @@ int main()
                 }
             }
         }
+
+        */
 
 
         EndDrawing();
