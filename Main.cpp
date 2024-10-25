@@ -108,15 +108,17 @@ class quadtree{
         }
 
         void Subdivide(){
-            Vector2 midpoint = Vector2{ this->GetQuadPosition().x + this->GetCellSize()/2, this->GetQuadPosition().y + this->GetCellSize()/2 };
-            float newCellSize = this->GetCellSize()/2;
+            if(this->isSubdivided == false){
+                Vector2 midpoint = Vector2{ this->GetQuadPosition().x + this->GetCellSize()/2, this->GetQuadPosition().y + this->GetCellSize()/2 };
+                float newCellSize = this->GetCellSize()/2;
 
-            this->upperLeft = new quadtree(Vector2{this->GetQuadPosition().x, this->GetQuadPosition().y}, newCellSize, RED, this->GetTreeDepth()+1);
-            this->upperRight = new quadtree(Vector2{midpoint.x, this->GetQuadPosition().y}, newCellSize, RED, this->GetTreeDepth()+1);
-            this->lowerLeft = new quadtree(Vector2{this->GetQuadPosition().x, midpoint.y}, newCellSize, RED, this->GetTreeDepth()+1);
-            this->lowerRight = new quadtree(Vector2{midpoint.x, midpoint.y}, newCellSize, RED, this->GetTreeDepth()+1);
+                this->upperLeft = new quadtree(Vector2{this->GetQuadPosition().x, this->GetQuadPosition().y}, newCellSize, RED, this->GetTreeDepth()+1);
+                this->upperRight = new quadtree(Vector2{midpoint.x, this->GetQuadPosition().y}, newCellSize, RED, this->GetTreeDepth()+1);
+                this->lowerLeft = new quadtree(Vector2{this->GetQuadPosition().x, midpoint.y}, newCellSize, RED, this->GetTreeDepth()+1);
+                this->lowerRight = new quadtree(Vector2{midpoint.x, midpoint.y}, newCellSize, RED, this->GetTreeDepth()+1);
 
-            this->isSubdivided = true;
+                this->isSubdivided = true;
+            }
         }
 };
 /* CELL
