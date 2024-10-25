@@ -45,17 +45,93 @@ struct Ball
     }
 };
 
+class quadtree{
+    private:
+        Vector2 position = {0.0f, 0.0f};
+        Color color = RED;
+        Vector2 max;
+        Vector2 min;
+        float cellSize;
+        bool isSubdivided = false;
+        int depth = 1;
+        
+        quadtree* upperLeft;    quadtree* upperRight;
+        quadtree* lowerLeft;    quadtree* lowerRight;
+    public:
+
+        quadtree(Vector2 position, float cellSize, Color color, int treeDepth): 
+            position(position),
+            color(color),
+            cellSize(cellSize),
+            depth(treeDepth),
+            max(Vector2{this->position.x + this->cellSize, this->position.y}),
+            min(Vector2{this->position.x, this->position.y + this->cellSize})
+            {}
+
+        std::vector<quadtree*> Quads(){
+            std::vector<quadtree*> quads;
+
+            quads.push_back(this->upperLeft);
+            quads.push_back(this->upperRight);
+            quads.push_back(this->lowerLeft);
+            quads.push_back(this->lowerRight);
+
+            return quads;
+        }
+
+        Vector2 GetQuadPosition(){
+            return this->position;
+        }
+
+        Vector2 GetMax(){
+            return this->max;
+        }
+
+        Vector2 GetMin(){
+            return this->min;
+        }
+
+        Color GetColor(){
+            return this->color;
+        }
+
+        float GetCellSize(){
+            return this->cellSize;
+        }
+
+        bool GetIsSubdivided(){
+            return this->isSubdivided;
+        }
+
+        int GetTreeDepth(){
+            return this->depth;
+        }
+
+        void Subdivide(){
+            Vector2 midpoint = Vector2{ this->GetQuadPosition().x + this->GetCellSize()/2, this->GetQuadPosition().y + this->GetCellSize()/2 };
+            float newCellSize = this->GetCellSize()/2;
+
+            this->upperLeft = new quadtree(Vector2{this->GetQuadPosition().x, this->GetQuadPosition().y}, newCellSize, RED, this->GetTreeDepth()+1);
+            this->upperRight = new quadtree(Vector2{midpoint.x, this->GetQuadPosition().y}, newCellSize, RED, this->GetTreeDepth()+1);
+            this->lowerLeft = new quadtree(Vector2{this->GetQuadPosition().x, midpoint.y}, newCellSize, RED, this->GetTreeDepth()+1);
+            this->lowerRight = new quadtree(Vector2{midpoint.x, midpoint.y}, newCellSize, RED, this->GetTreeDepth()+1);
+
+            this->isSubdivided = true;
+        }
+};
+/* CELL
 struct cell{
     Vector2 position = {0.0f, 0.0f};
     Color color = RED;
     Vector2 max;
     Vector2 min;
     float cellSize;
+    bool isSubdivided = false;
+    int depth = 1;
+    quad* quad;
 
-    std::vector<cell> quad;
     std::vector<Ball> ballsInCell;
     
-
     bool operator==(const cell& cell){
         return (this->position.x == cell.position.x && this->position.y == cell.position.y);
     }
@@ -88,22 +164,57 @@ struct cell{
     }
 
     void subdivideCell(){
-        cell upperLeft;    cell upperRight;
-        cell lowerLeft;    cell lowerRight;
         Vector2 midpoint = Vector2{ this->position.x + this->cellSize/2, this->position.y + this->cellSize/2 };
         float newCellSize = this->cellSize/2;
 
         upperLeft.initializeCell(Vector2{this->position.x, this->position.y}, newCellSize, RED);
+        upperLeft.depth = this->depth + 1;
         upperRight.initializeCell(Vector2{midpoint.x,this->position.y}, newCellSize, RED);
+        upperRight.depth = this->depth + 1;
         lowerLeft.initializeCell(Vector2{this->position.x, midpoint.y}, newCellSize, RED);
+        lowerLeft.depth = this->depth + 1;
         lowerRight.initializeCell(Vector2{midpoint.x, midpoint.y}, newCellSize, RED);
+        lowerRight.depth = this->depth + 1;
+
 
         this->quad.push_back(upperLeft);  // quadrant 0 (index 0) = upperLeft, so when referring to quad[0], it will always refer to upperLeft
         this->quad.push_back(upperRight); // quadrant 1 (index 1) = upperRight
         this->quad.push_back(lowerLeft);  // quadrant 2 (index 2) = lowerLeft
         this->quad.push_back(lowerRight); // quadrant 3 (index 3) = lowerLeft
+
+        this->isSubdivided = true;
+    }
+   
+    
+};
+*/
+
+/* QUAD
+struct quad{
+
+    cell origin;
+
+    cell upperLeft;    cell upperRight;
+    cell lowerLeft;    cell lowerRight;
+
+    void subdivideCell(){
+        Vector2 midpoint = Vector2{ origin.position.x + origin.cellSize/2, origin.position.y + origin.cellSize/2 };
+        float newCellSize = origin.cellSize/2;
+
+        upperLeft.initializeCell(Vector2{origin.position.x, origin.position.y}, newCellSize, RED);
+        upperLeft.depth = origin.depth + 1;
+        upperRight.initializeCell(Vector2{midpoint.x, origin.position.y}, newCellSize, RED);
+        upperRight.depth = origin.depth + 1;
+        lowerLeft.initializeCell(Vector2{origin.position.x, midpoint.y}, newCellSize, RED);
+        lowerLeft.depth = origin.depth + 1;
+        lowerRight.initializeCell(Vector2{midpoint.x, midpoint.y}, newCellSize, RED);
+        lowerRight.depth = origin.depth + 1;
+
+        origin.isSubdivided = true;
     }
 };
+*/
+
 float getDistance(Ball b1, Ball b2)
 {
     Vector2 dist = Vector2Subtract(b1.position, b2.position);
@@ -341,13 +452,11 @@ int main()
     std::vector<Ball> ballArray;
     int spawnInstance = 0;
     
-    std::vector<std::vector<cell>> grid;
     // initialize Cell
-    cell initialCell;
-    initialCell.initializeCell(Vector2{0,0-((initialCellSize-WINDOW_HEIGHT)/2)}, initialCellSize, RED);
+    quadtree* rootNode = new quadtree(Vector2{0,0-((initialCellSize-WINDOW_HEIGHT)/2)}, initialCellSize, RED, 0); // tree depth is 0 because it is root node
+    rootNode->Subdivide();
 
-    initialCell.subdivideCell();
-   
+
     bool drawGrid = false;
     while (!WindowShouldClose())
     {
@@ -391,14 +500,15 @@ int main()
             DrawCircleV(ballArray[i].position, ballArray[i].radius, ballArray[i].color);
         }
 
-        DrawRectangleLines(initialCell.position.x, initialCell.position.y, initialCellSize, initialCellSize, initialCell.color);
-        /* FOR CHECKING NEW QUAD TREE GRID:
-        for (int i = 0; i < initialCell.quad.size(); i++)
-        {
-            //std::cout << initialCell.quad[i].position.x << std::endl;
-            DrawRectangleLines(initialCell.quad[i].position.x, initialCell.quad[i].position.y, initialCell.quad[i].cellSize, initialCell.quad[i].cellSize, PINK);
+        DrawRectangleLines(rootNode->GetQuadPosition().x, rootNode->GetQuadPosition().y, initialCellSize, initialCellSize, rootNode->GetColor());
+        /* FOR CHECKING NEW QUAD TREE GRID: */
+
+        for(int i = 0; i < rootNode->Quads().size(); i++){
+            DrawRectangleLines(rootNode->Quads()[i]->GetQuadPosition().x, rootNode->Quads()[i]->GetQuadPosition().y, rootNode->Quads()[i]->GetCellSize(), rootNode->Quads()[i]->GetCellSize(), PINK);
         }
-        */
+        
+
+        
         //DrawCircleV(Vector2{ initialCell.position.x + initialCell.cellSize/2, initialCell.position.y + initialCell.cellSize/2 },1,PURPLE);
         /*
                 if(drawGrid){
