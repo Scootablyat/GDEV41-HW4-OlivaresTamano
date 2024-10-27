@@ -6,40 +6,95 @@
 #include <vector>
 #include <string>
 #include <algorithm>
+#include <cmath>
 
 const int WINDOW_WIDTH = 1280;
 const int WINDOW_HEIGHT = 720;
 const float FPS = 60;
 const float TIMESTEP = 1 / FPS;
 const int cellSize = 50;
+const int MAX_DEPTH = 1;
+
+struct Node;
+struct Ball;
+struct cell;
 
 struct Node
 {
+    Vector2 position; // AKA Center. If root, {WINDOW_WIDTH/2,WINDOW_HEIGHT/2}. If child, (parent.half_width/2)+-parent.position), (parent.halfwidth/2)+-parent.position)}
+    float half_width; // If root node, half of the screen's width or height, whichever is greater. If child, parent.half_width
+    Vector2 min, max; // If, for any axis, the minimum coordinate value of one is greater than the maximum coordinate of the other, then there is no intersection
     bool isLeaf;
-    int depth;
-    float min_x, min_y, max_x, max_y;
-    Vector2 position;
-    // Node *child1, *child2, *child3, *child4;
-    Node *child[4];
+    int depth;                       // Up to 3
+    Node *parent;                    // Empty if root
+    Node *child[4];                  // 0 = upper left, 1 = upper right, 2 = lower left, 3 = lower right
     std::vector<Ball> balls_in_node; // List of objects in node
 };
 
-class Quadtree
+void InitializeNodes(Node *parent_node, int current_depth)
 {
-public:
-    float width, height;
-    std::vector<Node> qt;
-
-    // must have max depth
-
-    void AddNode(Node n)
+    std::cout << "Grid " << current_depth << " being initialized" << std::endl;
+    if (current_depth < MAX_DEPTH) // From root node to MAX_DEPTH-1
     {
-        //
-    }
-};
+        parent_node->isLeaf = false;
+        parent_node->child[0] = new Node;
+        parent_node->child[1] = new Node;
+        parent_node->child[2] = new Node;
+        parent_node->child[3] = new Node;
 
+        for (int y = 0; y < 2; y++) // y 0 = upper, y 1 = lower
+        {
+            for (int x = 0; x < 2; x++) // x 0 = left, x 1 = right
+            {
+                int i = (y * 2) + x; // upper left -> upper right -> lower left -> lower right
+                parent_node->child[i]->half_width = parent_node->half_width / 2;
+
+                // Determining what kind of child you are
+                Vector2 child_position;
+                if (i == 0)
+                {
+                    child_position = {parent_node->position.x - parent_node->child[i]->half_width, parent_node->position.y - parent_node->child[i]->half_width};
+                }
+                else if (i == 1)
+                {
+                    child_position = {parent_node->position.x + parent_node->child[i]->half_width, parent_node->position.y - parent_node->child[i]->half_width};
+                }
+                else if (i == 2)
+                {
+                    child_position = {parent_node->position.x - parent_node->child[i]->half_width, parent_node->position.y + parent_node->child[i]->half_width};
+                }
+                else if (i == 3)
+                {
+                    child_position = {parent_node->position.x + parent_node->child[i]->half_width, parent_node->position.y + parent_node->child[i]->half_width};
+                }
+
+                parent_node->child[i]->position = child_position;
+                parent_node->child[i]->min = {child_position.x - parent_node->child[i]->half_width, child_position.y - parent_node->child[i]->half_width};
+                parent_node->child[i]->max = {child_position.x + parent_node->child[i]->half_width, child_position.y + parent_node->child[i]->half_width};
+                parent_node->child[i]->depth = current_depth + 1;
+                parent_node->child[i]->parent = parent_node;
+
+                // Keep making nodes until maximum depth
+                InitializeNodes(parent_node->child[i], current_depth + 1);
+            }
+        }
+    }
+    else if (current_depth == MAX_DEPTH) // For the leaf nodes
+    {
+        parent_node->isLeaf = true;
+    }
+
+    // std::cout << "Grid " << current_depth << parent_node->depth << ". " << "Center: {" << parent_node->position.x << ", " << parent_node->position.y << "}. ";
+    // std::cout << "Half: " << parent_node->half_width << ". Min: {" << parent_node->min.x << ", " << parent_node->min.y << "}. Max: {" << parent_node->max.x << ", " << parent_node->max.y << "}.";
+    // std::cout << "Leaf: " << parent_node->isLeaf << std::endl;
+}
+
+void InsertBallToNode(Ball *ball, Node *node)
+{
+}
 struct Ball
 {
+    Node *current_node;
     Vector2 position;
     float radius;
     Color color;
@@ -354,7 +409,7 @@ int main()
 {
     int elasticityCoefficient = 1.0f;
 
-    InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "OlivaresTamano - Exercise 5");
+    InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "OlivaresTamano - Homework 4");
 
     SetTargetFPS(FPS);
 
@@ -363,75 +418,82 @@ int main()
     std::vector<Ball> ballArray;
     int spawnInstance = 0;
 
-    std::vector<std::vector<cell>> grid;
-    initializeAllCells(grid);
+    // initialize Cell
+    Node root_node;
+    root_node.position = {WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2};
+    root_node.half_width = (WINDOW_WIDTH > WINDOW_HEIGHT) ? WINDOW_WIDTH / 2 : WINDOW_HEIGHT / 2;
+    root_node.min = {root_node.position.x - root_node.half_width, root_node.position.y - root_node.half_width};
+    root_node.max = {root_node.position.x + root_node.half_width, root_node.position.y + root_node.half_width};
+    root_node.isLeaf = false;
+    root_node.depth = 0;
 
-    bool drawGrid = false;
-    while (!WindowShouldClose())
-    {
+    InitializeNodes(&root_node, 0); // Recursively creates the whole tree
 
-        float delta_time = GetFrameTime();
-        Vector2 forces = Vector2Zero();
-        Vector2 mouseIndexLocation = getNearestIndexAtPoint(GetMousePosition());
-        if (IsMouseButtonDown(0))
-        {
-            std::cout << "MOUSE INDEX: " << mouseIndexLocation.x << " " << mouseIndexLocation.y << std::endl;
-            std::cout << "SIZE OF CELL: " << grid[mouseIndexLocation.y][mouseIndexLocation.x].ballsInCell.size() << std::endl;
-        }
+    // while (!WindowShouldClose())
+    // {
 
-        updateBallsIndex(ballArray);
-        updateCellContents(grid, ballArray);
-        if (IsKeyPressed(KEY_TAB))
-        {
-            drawGrid = !drawGrid;
-        }
-        if (IsKeyPressed(KEY_SPACE))
-        {
-            if (spawnInstance == 10)
-            {
-                InitializeBall(ballArray, 1, true);
-                spawnInstance = 0;
-            }
-            else
-            {
-                InitializeBall(ballArray, 25, false);
-                spawnInstance++;
-            }
-        }
+    //     float delta_time = GetFrameTime();
+    //     Vector2 forces = Vector2Zero();
+    //     Vector2 mouseIndexLocation = getNearestIndexAtPoint(GetMousePosition());
+    //     if (IsMouseButtonDown(0))
+    //     {
+    //         std::cout << "MOUSE INDEX: " << mouseIndexLocation.x << " " << mouseIndexLocation.y << std::endl;
+    //         std::cout << "SIZE OF CELL: " << grid[mouseIndexLocation.y][mouseIndexLocation.x].ballsInCell.size() << std::endl;
+    //     }
 
-        // Physics
-        accumulator += delta_time;
-        while (accumulator >= TIMESTEP)
-        {
-            checkCollisionInCell(grid, elasticityCoefficient, ballArray);
-            accumulator -= TIMESTEP;
-        }
-        const char *numberOfBalls = std::to_string(ballArray.size()).c_str();
+    //     updateBallsIndex(ballArray);
+    //     updateCellContents(grid, ballArray);
+    //     if (IsKeyPressed(KEY_TAB))
+    //     {
+    //         drawGrid = !drawGrid;
+    //     }
+    //     if (IsKeyPressed(KEY_SPACE))
+    //     {
+    //         if (spawnInstance == 10)
+    //         {
+    //             InitializeBall(ballArray, 1, true);
+    //             spawnInstance = 0;
+    //         }
+    //         else
+    //         {
+    //             InitializeBall(ballArray, 25, false);
+    //             spawnInstance++;
+    //         }
+    //     }
 
-        BeginDrawing();
-        ClearBackground(WHITE);
-        DrawText(numberOfBalls, 0, 0, 30, YELLOW);
-        for (int i = 0; i < ballArray.size(); i++)
-        {
-            DrawCircleV(ballArray[i].position, ballArray[i].radius, ballArray[i].color);
-        }
+    //     // Physics
+    //     accumulator += delta_time;
+    //     while (accumulator >= TIMESTEP)
+    //     {
+    //         checkCollisionInCell(grid, elasticityCoefficient, ballArray);
+    //         accumulator -= TIMESTEP;
+    //     }
+    //     const char *numberOfBalls = std::to_string(ballArray.size()).c_str();
 
-        if (drawGrid)
-        {
-            for (int i = 0; i < grid.size(); i++)
-            {
-                for (int j = 0; j < grid[i].size(); j++)
-                {
-                    const char *numberOfBalsInCell = std::to_string(grid[i][j].ballsInCell.size()).c_str();
-                    Vector2 rectMidpoint = Vector2{getCenterOfRectangle(grid[i][j].position, cellSize, cellSize)};
-                    DrawText(numberOfBalsInCell, grid[i][j].max.x, grid[i][j].max.y, 5, PURPLE);
-                    DrawRectangleLines(grid[i][j].position.x, grid[i][j].position.y, cellSize, cellSize, grid[i][j].color);
-                }
-            }
-        }
+    //     BeginDrawing();
+    //     ClearBackground(WHITE);
+    //     DrawText(numberOfBalls, 0, 0, 30, YELLOW);
+    //     for (int i = 0; i < ballArray.size(); i++)
+    //     {
+    //         DrawCircleV(ballArray[i].position, ballArray[i].radius, ballArray[i].color);
+    //     }
 
-        EndDrawing();
-    }
-    CloseWindow();
+    //     if (drawGrid)
+    //     {
+    //         for (int i = 0; i < grid.size(); i++)
+    //         {
+    //             for (int j = 0; j < grid[i].size(); j++)
+    //             {
+    //                 const char *numberOfBalsInCell = std::to_string(grid[i][j].ballsInCell.size()).c_str();
+    //                 Vector2 rectMidpoint = Vector2{getCenterOfRectangle(grid[i][j].position, cellSize, cellSize)};
+    //                 DrawText(numberOfBalsInCell, grid[i][j].max.x, grid[i][j].max.y, 5, PURPLE);
+    //                 DrawRectangleLines(grid[i][j].position.x, grid[i][j].position.y, cellSize, cellSize, grid[i][j].color);
+    //             }
+    //         }
+    //     }
+
+    //     EndDrawing();
+    // }
+    // CloseWindow();
     return 0;
 }
