@@ -205,6 +205,39 @@ void UpdateBall(Ball *ball)
     }
 };
 
+void CheckBallCollision(Ball *ball, Node *current_node)
+{
+    for (int i = 0; i < current_node->balls_in_node.size(); i++)
+    {
+        if (ball != current_node->balls_in_node[i])
+        {
+            Vector2 n = Vector2Subtract(ball->position, current_node->balls_in_node[i]->position); // Collision Normal
+            float distance = Vector2Length(n);
+            float sum_of_radii = ball->radius + current_node->balls_in_node[i]->radius;
+
+            Vector2 relative_velocity = Vector2Subtract(ball->velocity, current_node->balls_in_node[i]->velocity);
+            float relative_velocity_dot = Vector2DotProduct(n, relative_velocity);
+
+            if (distance <= sum_of_radii && relative_velocity_dot < 0.0f)
+            {
+                float impulse = -((1 + 1.0f) * Vector2DotProduct(relative_velocity, n)) / (Vector2DotProduct(n, n) * (ball->inverse_mass + current_node->balls_in_node[i]->inverse_mass));
+                ball->velocity = Vector2Add(ball->velocity, Vector2Scale(n, impulse * ball->inverse_mass));
+                current_node->balls_in_node[i]->velocity = Vector2Subtract(current_node->balls_in_node[i]->velocity, Vector2Scale(n, impulse * current_node->balls_in_node[i]->inverse_mass));
+            }
+        }
+    }
+    if (!current_node->isLeaf) // Check if the occupied node is not a parent
+    {
+        for (int i = 0; i < 4; i++)
+        {
+            if (!current_node->child[i]->balls_in_node.empty()) // Checking if there's balls
+            {
+                CheckBallCollision(ball, current_node->child[i]);
+            }
+        }
+    }
+};
+
 struct cell
 {
     Vector2 position = {0.0f, 0.0f};
@@ -444,7 +477,7 @@ float RandomDirection()
     return x * 2.0f - 1.0f;
 }
 
-void InitializeBall(std::vector<Ball> &array, int arraySize, bool isLarge, Node *node, int index)
+void InitializeBall(std::vector<Ball> &array, int arraySize, bool isLarge, Node *node)
 {
     for (size_t i = 0; i < arraySize; i++)
     {
@@ -515,39 +548,32 @@ int main()
     root_node.depth = 0;
 
     InitializeNodes(&root_node, 0); // Recursively creates the whole tree
-    int ind = 0;
+    bool drawGrid = false;
 
     while (!WindowShouldClose())
     {
 
         float delta_time = GetFrameTime();
         Vector2 forces = Vector2Zero();
-        // Vector2 mouseIndexLocation = getNearestIndexAtPoint(GetMousePosition());
-        // if (IsMouseButtonDown(0))
-        // {
-        //     // std::cout << "MOUSE INDEX: " << mouseIndexLocation.x << " " << mouseIndexLocation.y << std::endl;
-        // }
 
         //  updateBallsIndex(ballArray);
         //  updateCellContents(grid, ballArray);
-        //  if (IsKeyPressed(KEY_TAB))
-        //  {
-        //      drawGrid = !drawGrid;
-        //  }
+        if (IsKeyPressed(KEY_TAB))
+        {
+            drawGrid = !drawGrid;
+        }
 
         // A ball is initialized and inserted into the appropriate node
         if (IsKeyPressed(KEY_SPACE))
         {
             if (spawnInstance == 10)
             {
-                InitializeBall(ballArray, 1, true, &root_node, ind);
-                ind++;
+                InitializeBall(ballArray, 1, true, &root_node);
                 spawnInstance = 0;
             }
             else
             {
-                InitializeBall(ballArray, 25, false, &root_node, ind);
-                ind += 25;
+                InitializeBall(ballArray, 25, false, &root_node);
                 spawnInstance++;
             }
         }
@@ -585,6 +611,7 @@ int main()
 
                 UpdateBall(&current_ball);
                 // InsertBallToNode(&current_ball, &root_node); // Update ball
+                CheckBallCollision(&current_ball, current_ball.current_node);
             }
 
             // checkCollisionInCell(grid, elasticityCoefficient, ballArray);
