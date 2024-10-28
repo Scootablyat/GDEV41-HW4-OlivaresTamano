@@ -13,7 +13,7 @@ const int WINDOW_HEIGHT = 720;
 const float FPS = 60;
 const float TIMESTEP = 1 / FPS;
 const int cellSize = 50;
-const int MAX_DEPTH = 1;
+const int MAX_DEPTH = 7;
 
 struct Node;
 struct Ball;
@@ -25,15 +25,60 @@ struct Node
     float half_width; // If root node, half of the screen's width or height, whichever is greater. If child, parent.half_width
     Vector2 min, max; // If, for any axis, the minimum coordinate value of one is greater than the maximum coordinate of the other, then there is no intersection
     bool isLeaf;
-    int depth;                       // Up to 3
-    Node *parent;                    // Empty if root
-    Node *child[4];                  // 0 = upper left, 1 = upper right, 2 = lower left, 3 = lower right
-    std::vector<Ball> balls_in_node; // List of objects in node
+    int depth;                         // Up to 3
+    Node *parent;                      // Empty if root
+    Node *child[4];                    // 0 = upper left, 1 = upper right, 2 = lower left, 3 = lower right
+    std::vector<Ball *> balls_in_node; // List of objects in node
+
+    // Removes the specific ball from the node
+    void RemoveBall(Ball *ball)
+    {
+        for (size_t i = 0; i < balls_in_node.size(); i++)
+        {
+            if (balls_in_node[i] == ball)
+            {
+                balls_in_node.erase(balls_in_node.begin() + i);
+                break;
+            }
+        }
+    }
+};
+
+struct Ball
+{
+    Node *current_node;
+    Vector2 position;
+    float radius;
+    Color color;
+    int index;
+    float mass;
+    float inverse_mass;
+    Vector2 velocity;
+
+    bool operator==(const Ball &ball)
+    {
+        return (
+            this->position.x == ball.position.x &&
+            this->position.y == ball.position.y &&
+            this->radius == ball.radius &&
+            this->index == ball.index &&
+            this->mass == ball.mass);
+    }
+
+    bool operator!=(const Ball &ball)
+    {
+        return (
+            this->position.x != ball.position.x &&
+            this->position.y != ball.position.y &&
+            this->radius != ball.radius &&
+            this->index != ball.index &&
+            this->mass != ball.mass);
+    }
 };
 
 void InitializeNodes(Node *parent_node, int current_depth)
 {
-    std::cout << "Grid " << current_depth << " being initialized" << std::endl;
+    // std::cout << "Grid " << current_depth << " being initialized" << std::endl;
     if (current_depth < MAX_DEPTH) // From root node to MAX_DEPTH-1
     {
         parent_node->isLeaf = false;
@@ -91,36 +136,72 @@ void InitializeNodes(Node *parent_node, int current_depth)
 
 void InsertBallToNode(Ball *ball, Node *node)
 {
-}
-struct Ball
-{
-    Node *current_node;
-    Vector2 position;
-    float radius;
-    Color color;
-    int index;
-    float mass;
-    float inverse_mass;
-    Vector2 velocity;
 
-    bool operator==(const Ball &ball)
+    for (int i = 0; i < 4; i++)
     {
-        return (
-            this->position.x == ball.position.x &&
-            this->position.y == ball.position.y &&
-            this->radius == ball.radius &&
-            this->index == ball.index &&
-            this->mass == ball.mass);
+        if (!node->isLeaf &&
+            node->child[i]->max.x >= ball->position.x + ball->radius &&
+            node->child[i]->max.y >= ball->position.y + ball->radius &&
+            node->child[i]->min.x <= ball->position.x - ball->radius &&
+            node->child[i]->min.y <= ball->position.y - ball->radius)
+        {
+            InsertBallToNode(ball, node->child[i]);
+            return; // End this function if a smaller cell is found so the ball won't get included in the parent node's list
+        }
     }
+    node->balls_in_node.push_back(ball);
+    ball->current_node = node;
+}
 
-    bool operator!=(const Ball &ball)
+void DrawQuadTree(Node *current_node)
+{
+
+    if (!current_node->balls_in_node.empty())
     {
-        return (
-            this->position.x != ball.position.x &&
-            this->position.y != ball.position.y &&
-            this->radius != ball.radius &&
-            this->index != ball.index &&
-            this->mass != ball.mass);
+        // std::cout << "Node depth " << current_node->depth << "has" << current_node->balls_in_node.size() << "balls" << std::endl;
+        DrawRectangleLines(current_node->min.x, current_node->min.y, current_node->half_width * 2, current_node->half_width * 2, BLACK);
+    }
+    if (!current_node->isLeaf)
+    {
+        for (int i = 0; i < 4; i++)
+        {
+            DrawQuadTree(current_node->child[i]);
+        }
+    }
+};
+
+void UpdateBall(Ball *ball)
+{
+
+    if ( // If the object is in a node that covers it completely
+        ball->current_node->max.x >= ball->position.x + ball->radius &&
+        ball->current_node->max.y >= ball->position.y + ball->radius &&
+        ball->current_node->min.x <= ball->position.x - ball->radius &&
+        ball->current_node->min.y <= ball->position.y - ball->radius)
+    {
+        for (int i = 0; i < 4; i++)
+        {
+            // If any of the children of the object's current node can cover the object completely
+            if (!ball->current_node->isLeaf &&
+                ball->current_node->child[i]->max.x >= ball->position.x + ball->radius &&
+                ball->current_node->child[i]->max.y >= ball->position.y + ball->radius &&
+                ball->current_node->child[i]->min.x <= ball->position.x - ball->radius &&
+                ball->current_node->child[i]->min.y <= ball->position.y - ball->radius)
+            {
+                InsertBallToNode(ball, ball->current_node->child[i]); // Start going down again
+            }
+        }
+    }
+    else
+    {
+        // Sauce: https://stackoverflow.com/questions/41946007/efficient-and-well-explained-implementation-of-a-quadtree-for-2d-collision-det
+        // Erases the node's reference to this particular ball
+        ball->current_node->RemoveBall(ball);
+        // ball->current_node->balls_in_node.erase(std::remove(ball->current_node->balls_in_node.begin(), ball->current_node->balls_in_node.end(), ball), ball->current_node->balls_in_node.end());
+
+        // Changing the ball's reference to the former node's parent. Keep going up until we find an appropriate node
+        ball->current_node = ball->current_node->parent;
+        UpdateBall(ball);
     }
 };
 
@@ -363,7 +444,7 @@ float RandomDirection()
     return x * 2.0f - 1.0f;
 }
 
-void InitializeBall(std::vector<Ball> &array, int arraySize, bool isLarge)
+void InitializeBall(std::vector<Ball> &array, int arraySize, bool isLarge, Node *node, int index)
 {
     for (size_t i = 0; i < arraySize; i++)
     {
@@ -374,6 +455,7 @@ void InitializeBall(std::vector<Ball> &array, int arraySize, bool isLarge)
             GetRandomValue(0, 255),
             255};
         ball.position = {WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2};
+        // ball.position = {(float)GetRandomValue(20, 1245), (float)GetRandomValue(20, 695)};
         if (isLarge)
         {
             ball.radius = 25.0f;
@@ -388,7 +470,12 @@ void InitializeBall(std::vector<Ball> &array, int arraySize, bool isLarge)
         }
         ball.color = randomColor;
         ball.velocity = {500.0f * RandomDirection(), 500.0f * RandomDirection()};
+        // ball.index = index;
+        // index++;
         array.push_back(ball);
+
+        InsertBallToNode(&array.back(), node); // BALL INSERTION. Starting with root node as "current node". Balls recursively move down the tree
+        // std::cout << "node # " << array.size() << " at quad " << array.back().current_node->position.x << ", " << array.back().current_node->position.y << std::endl;
     }
 }
 
@@ -428,72 +515,112 @@ int main()
     root_node.depth = 0;
 
     InitializeNodes(&root_node, 0); // Recursively creates the whole tree
+    int ind = 0;
 
-    // while (!WindowShouldClose())
-    // {
+    while (!WindowShouldClose())
+    {
 
-    //     float delta_time = GetFrameTime();
-    //     Vector2 forces = Vector2Zero();
-    //     Vector2 mouseIndexLocation = getNearestIndexAtPoint(GetMousePosition());
-    //     if (IsMouseButtonDown(0))
-    //     {
-    //         std::cout << "MOUSE INDEX: " << mouseIndexLocation.x << " " << mouseIndexLocation.y << std::endl;
-    //         std::cout << "SIZE OF CELL: " << grid[mouseIndexLocation.y][mouseIndexLocation.x].ballsInCell.size() << std::endl;
-    //     }
+        float delta_time = GetFrameTime();
+        Vector2 forces = Vector2Zero();
+        // Vector2 mouseIndexLocation = getNearestIndexAtPoint(GetMousePosition());
+        // if (IsMouseButtonDown(0))
+        // {
+        //     // std::cout << "MOUSE INDEX: " << mouseIndexLocation.x << " " << mouseIndexLocation.y << std::endl;
+        // }
 
-    //     updateBallsIndex(ballArray);
-    //     updateCellContents(grid, ballArray);
-    //     if (IsKeyPressed(KEY_TAB))
-    //     {
-    //         drawGrid = !drawGrid;
-    //     }
-    //     if (IsKeyPressed(KEY_SPACE))
-    //     {
-    //         if (spawnInstance == 10)
-    //         {
-    //             InitializeBall(ballArray, 1, true);
-    //             spawnInstance = 0;
-    //         }
-    //         else
-    //         {
-    //             InitializeBall(ballArray, 25, false);
-    //             spawnInstance++;
-    //         }
-    //     }
+        //  updateBallsIndex(ballArray);
+        //  updateCellContents(grid, ballArray);
+        //  if (IsKeyPressed(KEY_TAB))
+        //  {
+        //      drawGrid = !drawGrid;
+        //  }
 
-    //     // Physics
-    //     accumulator += delta_time;
-    //     while (accumulator >= TIMESTEP)
-    //     {
-    //         checkCollisionInCell(grid, elasticityCoefficient, ballArray);
-    //         accumulator -= TIMESTEP;
-    //     }
-    //     const char *numberOfBalls = std::to_string(ballArray.size()).c_str();
+        // A ball is initialized and inserted into the appropriate node
+        if (IsKeyPressed(KEY_SPACE))
+        {
+            if (spawnInstance == 10)
+            {
+                InitializeBall(ballArray, 1, true, &root_node, ind);
+                ind++;
+                spawnInstance = 0;
+            }
+            else
+            {
+                InitializeBall(ballArray, 25, false, &root_node, ind);
+                ind += 25;
+                spawnInstance++;
+            }
+        }
 
-    //     BeginDrawing();
-    //     ClearBackground(WHITE);
-    //     DrawText(numberOfBalls, 0, 0, 30, YELLOW);
-    //     for (int i = 0; i < ballArray.size(); i++)
-    //     {
-    //         DrawCircleV(ballArray[i].position, ballArray[i].radius, ballArray[i].color);
-    //     }
+        // Physics
+        accumulator += delta_time;
+        while (accumulator >= TIMESTEP)
+        {
+            for (int i = 0; i < ballArray.size(); i++)
+            {
+                Ball &current_ball = ballArray[i];
+                current_ball.position = Vector2Add(current_ball.position, Vector2Scale(current_ball.velocity, TIMESTEP));
 
-    //     if (drawGrid)
-    //     {
-    //         for (int i = 0; i < grid.size(); i++)
-    //         {
-    //             for (int j = 0; j < grid[i].size(); j++)
-    //             {
-    //                 const char *numberOfBalsInCell = std::to_string(grid[i][j].ballsInCell.size()).c_str();
-    //                 Vector2 rectMidpoint = Vector2{getCenterOfRectangle(grid[i][j].position, cellSize, cellSize)};
-    //                 DrawText(numberOfBalsInCell, grid[i][j].max.x, grid[i][j].max.y, 5, PURPLE);
-    //                 DrawRectangleLines(grid[i][j].position.x, grid[i][j].position.y, cellSize, cellSize, grid[i][j].color);
-    //             }
-    //         }
-    //     }
+                // Screen Edge Collision
+                if (current_ball.position.x - current_ball.radius <= 0.0f)
+                {
+                    current_ball.position.x = current_ball.radius;
+                    current_ball.velocity.x *= -1.0f;
+                }
+                if (current_ball.position.x + current_ball.radius >= WINDOW_WIDTH)
+                {
+                    current_ball.position.x = WINDOW_WIDTH - current_ball.radius;
+                    current_ball.velocity.x *= -1.0f;
+                }
+                if (current_ball.position.y - current_ball.radius <= 0.0f)
+                {
+                    current_ball.position.y = current_ball.radius;
+                    current_ball.velocity.y *= -1.0f;
+                }
+                if (current_ball.position.y + current_ball.radius >= WINDOW_HEIGHT)
+                {
+                    current_ball.position.y = WINDOW_HEIGHT - current_ball.radius;
+                    current_ball.velocity.y *= -1.0f;
+                }
 
-    //     EndDrawing();
-    // }
-    // CloseWindow();
+                UpdateBall(&current_ball);
+                // InsertBallToNode(&current_ball, &root_node); // Update ball
+            }
+
+            // checkCollisionInCell(grid, elasticityCoefficient, ballArray);
+            accumulator -= TIMESTEP;
+        }
+        const char *numberOfBalls = std::to_string(ballArray.size()).c_str();
+
+        BeginDrawing();
+        ClearBackground(WHITE);
+        DrawText(numberOfBalls, 0, 0, 30, YELLOW);
+        for (int i = 0; i < ballArray.size(); i++)
+        {
+            DrawCircleV(ballArray[i].position, ballArray[i].radius, ballArray[i].color);
+        }
+
+        // if (drawGrid)
+        // {
+        //     for (int i = 0; i < grid.size(); i++)
+        //     {
+        //         for (int j = 0; j < grid[i].size(); j++)
+        //         {
+        //             const char *numberOfBalsInCell = std::to_string(grid[i][j].ballsInCell.size()).c_str();
+        //             Vector2 rectMidpoint = Vector2{getCenterOfRectangle(grid[i][j].position, cellSize, cellSize)};
+        //             DrawText(numberOfBalsInCell, grid[i][j].max.x, grid[i][j].max.y, 5, PURPLE);
+        //             DrawRectangleLines(grid[i][j].position.x, grid[i][j].position.y, cellSize, cellSize, grid[i][j].color);
+        //         }
+        //     }
+        // }
+
+        // if (drawGrid)
+        // {
+        DrawQuadTree(&root_node);
+        // }
+
+        EndDrawing();
+    }
+    CloseWindow();
     return 0;
 }
